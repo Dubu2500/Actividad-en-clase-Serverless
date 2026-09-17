@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-BUCKET_NAME="${1:-logging-vicky-iteso}"
+BUCKET_NAME="${1:-logging-apiserverless-iteso}"
 
 echo "Creando bucket: $BUCKET_NAME"
 aws s3 mb "s3://$BUCKET_NAME"

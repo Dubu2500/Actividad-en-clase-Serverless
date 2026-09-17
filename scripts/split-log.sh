@@ -1,36 +1,32 @@
 #!/bin/bash
 
-# Define the base name and 1 KB limit in bytes
 BASE_NAME="openssh"
-MAX_BYTES=1024
+MAX_BYTES=$((10 * 1024)) # 10 KB
 
-current_bytes=0
+current_bytes=0 # contador de bytes
 current_file=""
 
-# Function to generate a new filename with a current timestamp
+# genera un nombre de archivo con la fecha actual
 generate_filename() {
     echo "${BASE_NAME}-$(date +%Y%m%d%H%M%S).log"
 }
 
-# Read input line by line
+# lee linea por linea
 while IFS= read -r line || [[ -n "$line" ]]; do
-    # Format line to include the newline character for accurate byte counting
-    line_with_newline="$line"$'\n'
-    # Calculate byte size of the current line
+    line_with_newline="$line"$'\n' # aseguramos que incluya el caracter de newline
     line_bytes=$(printf '%s' "$line_with_newline" | wc -c)
 
-    # If no file is open, or adding this line exceeds 1 KB, start a new batch
+    # si el archivo no esta abierto o si añadir esta linea sobrepasa los bytes maximos, creamos un nuevo batch
     if [[ -z "$current_file" ]] || (( current_bytes + line_bytes > MAX_BYTES )); then
-        # Ensure a small delay so fast batches don't overwrite the same timestamp filename
         if [[ -n "$current_file" ]]; then
-            sleep 1
+            sleep 1 # esperamos 1 segundo entre batches
         fi
         current_file=$(generate_filename)
         current_bytes=0
     fi
 
-    # Append the line to the active batch file
+    # agrega la linea al batch activo
     printf '%s' "$line_with_newline" >> "$current_file"
-    # Update the total byte count for the current batch
+    # actualizamos el contador de bytes para el batch actual
     (( current_bytes += line_bytes ))
 done
