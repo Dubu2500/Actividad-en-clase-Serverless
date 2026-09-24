@@ -1,11 +1,14 @@
-import boto3
-import csv
-import io
 import os
 import re
 import urllib.parse
 
+import boto3
+
 s3 = boto3.client("s3")
+dynamodb = boto3.resource("dynamodb")
+
+TABLE_NAME = os.environ.get("TABLE_NAME", "logging-apiserverless-iteso-tabla")
+table = dynamodb.Table(TABLE_NAME)
 
 LOG_PATTERN = re.compile(
     r'^(?P<timestamp>\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+'
@@ -13,6 +16,7 @@ LOG_PATTERN = re.compile(
     r'(?P<program>[^\[\s]+)\[(?P<pid>\d+)\]:\s*'
     r'(?P<log>.*)$'
 )
+
 
 def lambda_handler(event, context):
     results = []
@@ -24,36 +28,36 @@ def lambda_handler(event, context):
         response = s3.get_object(Bucket=bucket, Key=key)
         content = response["Body"].read().decode("utf-8")
 
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["timestamp", "hostname", "program", "pid", "log"])
+        written = 0
 
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            match = LOG_PATTERN.match(line)
-            if match:
-                writer.writerow([
-                    match.group("timestamp"),
-                    match.group("hostname"),
-                    match.group("program"),
-                    match.group("pid"),
-                    match.group("log"),
-                ])
-            else:
-                writer.writerow(["", "", "", "", line])
+        # batch_writer agrupa en lotes de 25 y reintenta los items no procesados
+        with table.batch_writer() as batch:
+            for line_number, line in enumerate(content.splitlines(), start=1):
+                line = line.strip()
+                if not line:
+                    continue
 
-        filename = os.path.basename(key)
-        csv_filename = os.path.splitext(filename)[0] + ".csv"
-        output_key = f"output/{csv_filename}"
+                item = {
+                    "source_file": key,
+                    "line_number": line_number,
+                }
 
-        s3.put_object(
-            Bucket=bucket,
-            Key=output_key,
-            Body=output.getvalue().encode("utf-8"),
-            ContentType="text/csv",
-        )
-        results.append(output_key)
+                match = LOG_PATTERN.match(line)
+                if match:
+                    item.update({
+                        "timestamp": match.group("timestamp"),
+                        "hostname": match.group("hostname"),
+                        "program": match.group("program"),
+                        "pid": int(match.group("pid")),
+                        "log": match.group("log"),
+                    })
+                else:
+                    # si hay una linea sin el formato esperado se guarda solo el texto raw
+                    item["log"] = line
 
-    return {"statusCode": 200, "body": f"Generados: {results}"}
+                batch.put_item(Item=item)
+                written += 1
+
+        results.append({"file": key, "items": written})
+
+    return {"statusCode": 200, "body": f"Procesados: {results}"}

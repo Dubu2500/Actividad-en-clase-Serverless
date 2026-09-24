@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 BASE_NAME="openssh"
 MAX_BYTES=$((10 * 1024)) # 10 KB
@@ -6,9 +7,15 @@ MAX_BYTES=$((10 * 1024)) # 10 KB
 current_bytes=0 # contador de bytes
 current_file=""
 
+# directorio donde vive este script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# root del proyecto, un nivel arriba de scripts/
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # genera un nombre de archivo con la fecha actual
 generate_filename() {
-    echo "${BASE_NAME}-$(date +%Y%m%d%H%M%S).log"
+    echo "${PROJECT_ROOT}/${BASE_NAME}-$(date +%Y%m%d%H%M%S).log"
 }
 
 # lee linea por linea

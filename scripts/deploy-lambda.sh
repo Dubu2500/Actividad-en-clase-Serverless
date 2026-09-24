@@ -2,7 +2,7 @@
 set -e
 
 FUNCTION_NAME="log-processor"
-BUCKET_NAME="logging-vicky-iteso"
+BUCKET_NAME="${1:-logging-apiserverless-iteso-bucket}"
 
 LAB_ROLE_ARN=$(aws iam get-role --role-name LabRole --query 'Role.Arn' --output text)
 
