@@ -1,3 +1,4 @@
 *.log
 lambda_package.zip
 *.csv
+echo "build/" >> .gitignore

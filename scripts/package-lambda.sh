@@ -1,7 +1,11 @@
 #!/bin/bash
 set -e
-
-cd "$(dirname "$0")/../src/logging-system"
-rm -f ../../lambda_package.zip
-zip ../../lambda_package.zip lambda_function.py
-echo "lambda_package.zip generado"
+# Empaqueta cada carpeta de src/ en build/<nombre>.zip
+cd "$(dirname "$0")/.."
+mkdir -p build
+for dir in src/*/; do
+  NAME=$(basename "$dir")
+  rm -f "build/$NAME.zip"
+  (cd "$dir" && zip -q -r "../../build/$NAME.zip" .)
+  echo "build/$NAME.zip generado"
+done

@@ -1,0 +1,185 @@
+{
+  "Comment": "Log processing system (parte 3): separa cada batch en lineas, las clasifica y las guarda en Logs o SecurityAlerts",
+  "StartAt": "ParseBatch",
+  "States": {
+    "ParseBatch": {
+      "Type": "Task",
+      "Comment": "Descarga el batch de S3 y lo separa en lineas (no escribe a DynamoDB)",
+      "Resource": "${PARSE_BATCH_ARN}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 4,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "ProcesarLineas"
+    },
+    "ProcesarLineas": {
+      "Type": "Map",
+      "Comment": "Procesa cada linea del batch por separado",
+      "ItemsPath": "$.lines",
+      "MaxConcurrency": 5,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "ClasificarLinea",
+        "States": {
+          "ClasificarLinea": {
+            "Type": "Task",
+            "Comment": "Marca la linea como sospechosa si contiene 'Invalid user' o 'POSSIBLE BREAK-IN ATTEMPT'",
+            "Resource": "${CLASSIFY_LOG_ARN}",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException"
+                ],
+                "IntervalSeconds": 1,
+                "MaxAttempts": 6,
+                "BackoffRate": 2,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "Next": "EsSospechosa"
+          },
+          "EsSospechosa": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.suspicious",
+                "BooleanEquals": true,
+                "Next": "GuardarEnSecurityAlerts"
+              }
+            ],
+            "Default": "GuardarEnLogs"
+          },
+          "GuardarEnSecurityAlerts": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::dynamodb:putItem",
+            "Parameters": {
+              "TableName": "${ALERTS_TABLE}",
+              "Item": {
+                "source_file": {
+                  "S.$": "$.source_file"
+                },
+                "line_number": {
+                  "N.$": "States.Format('{}', $.line_number)"
+                },
+                "timestamp": {
+                  "S.$": "$.timestamp"
+                },
+                "hostname": {
+                  "S.$": "$.hostname"
+                },
+                "program": {
+                  "S.$": "$.program"
+                },
+                "pid": {
+                  "N.$": "$.pid"
+                },
+                "log": {
+                  "S.$": "$.log"
+                },
+                "alert_type": {
+                  "S.$": "$.alert_type"
+                },
+                "detected_at": {
+                  "S.$": "$$.State.EnteredTime"
+                },
+                "execution": {
+                  "S.$": "$$.Execution.Name"
+                }
+              }
+            },
+            "ResultPath": null,
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "DynamoDB.ProvisionedThroughputExceededException",
+                  "DynamoDB.ThrottlingException",
+                  "DynamoDB.RequestLimitExceeded",
+                  "DynamoDB.InternalServerErrorException",
+                  "DynamoDB.AmazonDynamoDBException"
+                ],
+                "IntervalSeconds": 1,
+                "MaxAttempts": 6,
+                "BackoffRate": 2,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "End": true
+          },
+          "GuardarEnLogs": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::dynamodb:putItem",
+            "Parameters": {
+              "TableName": "${LOGS_TABLE}",
+              "Item": {
+                "source_file": {
+                  "S.$": "$.source_file"
+                },
+                "line_number": {
+                  "N.$": "States.Format('{}', $.line_number)"
+                },
+                "timestamp": {
+                  "S.$": "$.timestamp"
+                },
+                "hostname": {
+                  "S.$": "$.hostname"
+                },
+                "program": {
+                  "S.$": "$.program"
+                },
+                "pid": {
+                  "N.$": "$.pid"
+                },
+                "log": {
+                  "S.$": "$.log"
+                }
+              }
+            },
+            "ResultPath": null,
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "DynamoDB.ProvisionedThroughputExceededException",
+                  "DynamoDB.ThrottlingException",
+                  "DynamoDB.RequestLimitExceeded",
+                  "DynamoDB.InternalServerErrorException",
+                  "DynamoDB.AmazonDynamoDBException"
+                ],
+                "IntervalSeconds": 1,
+                "MaxAttempts": 6,
+                "BackoffRate": 2,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "Resumen"
+    },
+    "Resumen": {
+      "Type": "Pass",
+      "Comment": "Resultado final de la ejecucion",
+      "Parameters": {
+        "archivo.$": "$.key",
+        "bucket.$": "$.bucket",
+        "lineas_procesadas.$": "$.total_lines"
+      },
+      "End": true
+    }
+  }
+}
