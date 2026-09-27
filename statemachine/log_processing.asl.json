@@ -98,6 +98,15 @@
                 },
                 "execution": {
                   "S.$": "$$.Execution.Name"
+                },
+                "severity": {
+                  "S.$": "$.severity"
+                },
+                "alert_status": {
+                  "S": "ACTIVE"
+                },
+                "received_at": {
+                  "S.$": "$.received_at"
                 }
               }
             },
@@ -145,6 +154,12 @@
                 },
                 "log": {
                   "S.$": "$.log"
+                },
+                "gsi_pk": {
+                  "S": "LOG"
+                },
+                "received_at": {
+                  "S.$": "$.received_at"
                 }
               }
             },
