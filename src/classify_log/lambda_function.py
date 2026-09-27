@@ -7,13 +7,15 @@ SUSPICIOUS_PATTERNS. El estado Choice usa el campo "suspicious" para decidir
 en que tabla de DynamoDB se guarda.
 
 Entrada:  una linea de parse_batch
-Salida:   la misma linea + {"suspicious": true/false, "alert_type": "..."}
+Salida:   la misma linea + {"suspicious": true/false, "alert_type": "...", "severity": "..."}
 """
 
-SUSPICIOUS_PATTERNS = [
-    "Invalid user",
-    "POSSIBLE BREAK-IN ATTEMPT",
-]
+# patron -> severidad de la alerta
+SUSPICIOUS_PATTERNS = {
+    "POSSIBLE BREAK-IN ATTEMPT": "HIGH",
+    "Invalid user": "MEDIUM",
+}
+SEVERITY_ORDER = ["HIGH", "MEDIUM"]
 
 
 def lambda_handler(event, context):
@@ -23,4 +25,8 @@ def lambda_handler(event, context):
     result = dict(event)
     result["suspicious"] = bool(matches)
     result["alert_type"] = ", ".join(matches) if matches else "NONE"
+
+    # si hay varios patrones, se queda la severidad mas alta
+    severities = [SUSPICIOUS_PATTERNS[m] for m in matches]
+    result["severity"] = next((s for s in SEVERITY_ORDER if s in severities), "NONE")
     return result
